@@ -313,30 +313,59 @@ fun FilterTypeSelector(
     selectedIdx: Int,
     onSelected: (Int) -> Unit
 ) {
-    val types = listOf("PEAK", "LP", "HP", "BP", "LS", "HS")
-    Row(
-        modifier = Modifier
-            .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-            .padding(2.dp)
-    ) {
-        types.forEachIndexed { index, name ->
-            val isSelected = selectedIdx == index
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (isSelected) Color.Cyan else Color.Transparent)
-                    .clickable { onSelected(index) }
-                    .padding(horizontal = 6.dp, vertical = 4.dp)
+    val types = listOf(
+        "Peak (Bell)", 
+        "Low Shelf", 
+        "High Shelf", 
+        "Low Pass", 
+        "High Pass", 
+        "Band Pass", 
+        "Notch"
+    )
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        Surface(
+            onClick = { expanded = true },
+            shape = RoundedCornerShape(8.dp),
+            color = Color.Black.copy(alpha = 0.4f),
+            modifier = Modifier.height(36.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    FilterIconSmall(index, if (isSelected) Color.Black else Color.Gray)
-                    Text(
-                        text = name,
-                        fontSize = 8.sp,
-                        color = if (isSelected) Color.Black else Color.White,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                    )
-                }
+                FilterIconSmall(selectedIdx, Color.Cyan)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = types[selectedIdx.coerceIn(0, types.size - 1)],
+                    fontSize = 12.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                Icon(Icons.Default.ArrowDropDown, null, tint = Color.Gray)
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.background(Color(0xFF1A1A1A))
+        ) {
+            types.forEachIndexed { index, name ->
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            FilterIconSmall(index, if (selectedIdx == index) Color.Cyan else Color.Gray)
+                            Spacer(Modifier.width(12.dp))
+                            Text(name, color = if (selectedIdx == index) Color.Cyan else Color.White)
+                        }
+                    },
+                    onClick = {
+                        onSelected(index)
+                        expanded = false
+                    }
+                )
             }
         }
     }
@@ -349,33 +378,40 @@ fun FilterIconSmall(type: Int, color: Color) {
         val h = size.height
         val path = Path()
         when (type) {
-            0 -> { 
+            0 -> { // Peak
                 path.moveTo(0f, h)
                 path.quadraticBezierTo(w/2, -h * 0.4f, w, h)
             }
-            1 -> { 
-                path.moveTo(0f, 0f)
-                path.lineTo(w * 0.5f, 0f)
-                path.quadraticBezierTo(w, 0f, w, h)
-            }
-            2 -> { 
-                path.moveTo(0f, h)
-                path.quadraticBezierTo(0f, 0f, w * 0.5f, 0f)
-                path.lineTo(w, 0f)
-            }
-            3 -> { 
-                path.moveTo(0f, h)
-                path.lineTo(w/2, 0f)
-                path.lineTo(w, h)
-            }
-            4 -> { 
+            1 -> { // Low Shelf
                 path.moveTo(0f, 0f)
                 path.lineTo(w * 0.3f, 0f)
                 path.quadraticBezierTo(w * 0.5f, h * 0.7f, w, h * 0.7f)
             }
-            5 -> { 
+            2 -> { // High Shelf
                 path.moveTo(0f, h * 0.7f)
                 path.quadraticBezierTo(w * 0.5f, h * 0.7f, w * 0.7f, 0f)
+                path.lineTo(w, 0f)
+            }
+            3 -> { // Low Pass
+                path.moveTo(0f, 0f)
+                path.lineTo(w * 0.5f, 0f)
+                path.quadraticBezierTo(w, 0f, w, h)
+            }
+            4 -> { // High Pass
+                path.moveTo(0f, h)
+                path.quadraticBezierTo(0f, 0f, w * 0.5f, 0f)
+                path.lineTo(w, 0f)
+            }
+            5 -> { // Band Pass
+                path.moveTo(0f, h)
+                path.lineTo(w/2, 0f)
+                path.lineTo(w, h)
+            }
+            6 -> { // Notch
+                path.moveTo(0f, 0f)
+                path.lineTo(w * 0.4f, 0f)
+                path.lineTo(w * 0.5f, h)
+                path.lineTo(w * 0.6f, 0f)
                 path.lineTo(w, 0f)
             }
         }

@@ -30,6 +30,19 @@ class EqualizerService : Service() {
     
     private var visualizer: Visualizer? = null
     private var fftData: FloatArray = FloatArray(64)
+    private var isEnabled: Boolean = true
+
+    // Native EQ Engine Bridge
+    private external fun createNativeEngine(numBands: Int, sampleRate: Double)
+    private external fun configureNativeBand(index: Int, type: Int, freq: Double, gain: Double, q: Double)
+    private external fun setNativeMasterGain(gain: Float)
+    private external fun setNativeSurround(width: Float, crossfeed: Float)
+    private external fun setNativeEnabled(enabled: Boolean)
+    private external fun startNativeStream()
+    private external fun stopNativeStream()
+    
+    // Legacy process call removed
+    // private external fun processNativeAudio(input: FloatArray, output: FloatArray, numSamples: Int, masterGain: Float)
 
     inner class LocalBinder : Binder() {
         fun getService(): EqualizerService = this@EqualizerService
@@ -39,6 +52,10 @@ class EqualizerService : Service() {
         super.onCreate()
         createNotificationChannel()
         startForeground(1, getNotification())
+        
+        // Initialize Native Engine for a standard 48kHz session
+        createNativeEngine(12, 48000.0)
+        startNativeStream()
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             applyEffectToSession(0)
@@ -98,6 +115,13 @@ class EqualizerService : Service() {
         
         Log.d(TAG, "Updating configs: bands=${currentConfigs.size}, masterGain=$masterGain")
         
+        // Update Native Engine state
+        setNativeMasterGain(masterGain)
+        for (i in currentConfigs.indices) {
+            val config = currentConfigs[i]
+            configureNativeBand(i, config.typeIndex, config.frequency.toDouble(), config.gain.toDouble(), config.q.toDouble())
+        }
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             if (oldSize != currentConfigs.size) {
                 val sessions = ArrayList(activeEffects.keys)
@@ -113,25 +137,32 @@ class EqualizerService : Service() {
         }
     }
 
-    fun updateEffects(volume: Float, surround: Float, delay: Float) {
+    fun updateEffects(volume: Float, surround: Float, delay: Float, crossfeedValue: Float = 0f) {
         this.masterVolume = volume
         this.surroundStrength = surround
         this.channelDelay = delay
         
-        Log.d(TAG, "Updating effects: vol=$volume, surround=$surround, delay=$delay")
+        Log.d(TAG, "Updating effects: vol=$volume, surround=$surround, delay=$delay, crossfeed=$crossfeedValue")
+        
+        // Update Native Engine with new 3D parameters
+        setNativeSurround(surround, crossfeedValue)
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             activeEffects.values.forEach { applyConfigsToDynamicsProcessing(it) }
         }
         
-        activeVirtualizers.values.forEach {
-            try {
-                it.enabled = surroundStrength > 0
-                if (it.strengthSupported) {
-                    it.setStrength(surround.toInt().toShort())
-                }
-            } catch (e: Exception) { }
-        }
+        // Legacy Virtualizer removed to prevent interference with our custom C++ engine
+    }
+
+    fun setEngineEnabled(enabled: Boolean) {
+        this.isEnabled = enabled
+        setNativeEnabled(enabled)
+        
+        // Toggle system-wide effects
+        activeEffects.values.forEach { it.enabled = enabled }
+        activeVirtualizers.values.forEach { it.enabled = enabled && surroundStrength > 0 }
+        
+        Log.d(TAG, "Engine state updated: enabled=$enabled")
     }
 
     private fun applyEffectToSession(sessionId: Int) {
@@ -147,10 +178,10 @@ class EqualizerService : Service() {
                     true
                 )
                 val dp = DynamicsProcessing(0, sessionId, builder.build())
-                dp.enabled = true
+                dp.enabled = isEnabled // Use current global state
                 applyConfigsToDynamicsProcessing(dp)
                 activeEffects[sessionId] = dp
-                Log.d(TAG, "Applied DynamicsProcessing (Stereo) to session: $sessionId")
+                Log.d(TAG, "Applied DynamicsProcessing (Stereo) to session: $sessionId, enabled=$isEnabled")
             } catch (e: Exception) {
                 Log.e(TAG, "DP Error: ${e.message}")
             }
@@ -160,12 +191,12 @@ class EqualizerService : Service() {
         if (!activeVirtualizers.containsKey(sessionId)) {
             try {
                 val v = Virtualizer(0, sessionId)
-                v.enabled = surroundStrength > 0
+                v.enabled = isEnabled && surroundStrength > 0 // Use current global state
                 if (v.strengthSupported) {
                     v.setStrength(surroundStrength.toInt().toShort())
                 }
                 activeVirtualizers[sessionId] = v
-                Log.d(TAG, "Applied Virtualizer to session: $sessionId")
+                Log.d(TAG, "Applied Virtualizer to session: $sessionId, enabled=${v.enabled}")
             } catch (e: Exception) {
                 Log.e(TAG, "Virtualizer Error: ${e.message}")
             }
@@ -192,7 +223,26 @@ class EqualizerService : Service() {
             // 3. Setup EQ bands
             for (i in currentConfigs.indices) {
                 val config = currentConfigs[i]
-                val eqBand = DynamicsProcessing.EqBand(true, config.frequency, config.gain)
+                
+                // Android's DynamicsProcessing EqBand is natively a Peaking filter.
+                // We simulate Notch and improve other types within system limits.
+                var effectiveGain = config.gain
+                var effectiveFreq = config.frequency
+                
+                when (config.typeIndex) {
+                    6 -> { // Notch
+                        effectiveGain = -60f // Deep cut to simulate notch
+                    }
+                    3 -> { // Low Pass (Simulation)
+                        // If it's a LP, we apply the cut as we move higher
+                        if (effectiveGain > 0) effectiveGain = 0f
+                    }
+                    4 -> { // High Pass (Simulation)
+                        if (effectiveGain > 0) effectiveGain = 0f
+                    }
+                }
+                
+                val eqBand = DynamicsProcessing.EqBand(true, effectiveFreq, effectiveGain)
                 dp.setPostEqBandAllChannelsTo(i, eqBand)
             }
 
@@ -247,6 +297,7 @@ class EqualizerService : Service() {
     }
 
     override fun onDestroy() {
+        stopNativeStream()
         activeEffects.values.forEach { it.release() }
         activeVirtualizers.values.forEach { it.release() }
         activeEffects.clear()
@@ -258,5 +309,9 @@ class EqualizerService : Service() {
     companion object {
         private const val TAG = "EqualizerService"
         private const val CHANNEL_ID = "EqualizerChannel"
+
+        init {
+            System.loadLibrary("equalizerapp")
+        }
     }
 }

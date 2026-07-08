@@ -21,6 +21,7 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags("")
+                arguments("-DANDROID_STL=c++_shared")
             }
         }
     }
@@ -47,6 +48,7 @@ android {
     }
     buildFeatures {
         compose = true
+        prefab = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
@@ -59,6 +61,7 @@ android {
 }
 
 dependencies {
+    implementation("com.google.oboe:oboe:1.10.0")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.activity.compose)

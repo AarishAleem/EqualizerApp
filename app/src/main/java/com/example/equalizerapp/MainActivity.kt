@@ -16,9 +16,11 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
 import com.example.equalizerapp.ui.screens.EffectsScreen
 import com.example.equalizerapp.ui.screens.EqualizerScreen
+import com.example.equalizerapp.ui.screens.SurroundScreen
 import com.example.equalizerapp.ui.theme.PowerEQTheme
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -27,17 +29,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.pow
 
+@OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
 
     private var equalizerService: EqualizerService? = null
     private var isBound by mutableStateOf(false)
     private val bandConfigs = mutableStateListOf<BandConfig>()
+    private var isEngineEnabled by mutableStateOf(true)
     private var graphData by mutableStateOf(floatArrayOf())
     private var realTimeFft by mutableStateOf(floatArrayOf())
     private var masterGain by mutableFloatStateOf(0f)
     
     private var masterVolume by mutableFloatStateOf(100f)
     private var surroundStrength by mutableFloatStateOf(0f)
+    private var crossfeed by mutableFloatStateOf(0f)
     private var channelDelay by mutableFloatStateOf(0f)
 
     private val presets = mutableStateListOf<Preset>()
@@ -48,6 +53,7 @@ class MainActivity : ComponentActivity() {
     sealed class Screen(val route: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String) {
         object Equalizer : Screen("equalizer", Icons.Default.Tune, "EQ")
         object Effects : Screen("effects", Icons.Default.Settings, "FX")
+        object Surround : Screen("surround", Icons.Default.SurroundSound, "3D")
     }
 
     private var currentScreen by mutableStateOf<Screen>(Screen.Equalizer)
@@ -121,9 +127,30 @@ class MainActivity : ComponentActivity() {
         setContent {
             PowerEQTheme {
                 Scaffold(
+                    topBar = {
+                        CenterAlignedTopAppBar(
+                            title = { Text("PowerEQ Master", style = MaterialTheme.typography.titleMedium, color = Color.White) },
+                            navigationIcon = {
+                                IconButton(onClick = { 
+                                    isEngineEnabled = !isEngineEnabled
+                                    notifyService()
+                                    saveState()
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.PowerSettingsNew,
+                                        contentDescription = "Toggle Power",
+                                        tint = if (isEngineEnabled) Color.Cyan else Color.Gray
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                containerColor = Color.Black
+                            )
+                        )
+                    },
                     bottomBar = {
                         NavigationBar(containerColor = MaterialTheme.colorScheme.secondary) {
-                            val items = listOf(Screen.Equalizer, Screen.Effects)
+                            val items = listOf(Screen.Equalizer, Screen.Surround, Screen.Effects)
                             items.forEach { screen ->
                                 NavigationBarItem(
                                     icon = { Icon(screen.icon, contentDescription = screen.label) },
@@ -175,6 +202,14 @@ class MainActivity : ComponentActivity() {
                                         onSurroundChange = { surroundStrength = it; saveAndNotifyEffectsDebounced(scope) },
                                         channelDelay = channelDelay,
                                         onDelayChange = { channelDelay = it; saveAndNotifyEffectsDebounced(scope) }
+                                    )
+                                }
+                                is Screen.Surround -> {
+                                    SurroundScreen(
+                                        width = surroundStrength,
+                                        onWidthChange = { surroundStrength = it; saveAndNotifyEffectsDebounced(scope) },
+                                        crossfeed = crossfeed,
+                                        onCrossfeedChange = { crossfeed = it; saveAndNotifyEffectsDebounced(scope) }
                                     )
                                 }
                             }
@@ -275,7 +310,7 @@ class MainActivity : ComponentActivity() {
         updateJob?.cancel()
         updateJob = scope.launch {
             delay(10)
-            if (isBound) equalizerService?.updateEffects(masterVolume, surroundStrength, channelDelay)
+            if (isBound) equalizerService?.updateEffects(masterVolume, surroundStrength, channelDelay, crossfeed)
             saveState()
         }
     }
@@ -284,10 +319,12 @@ class MainActivity : ComponentActivity() {
         val sp = getSharedPreferences("eq_prefs", MODE_PRIVATE)
         val gson = Gson()
         sp.edit().apply {
+            putBoolean("engine_enabled", isEngineEnabled)
             putString("bands", gson.toJson(bandConfigs.toList()))
             putFloat("master_gain", masterGain)
             putFloat("master_volume", masterVolume)
             putFloat("surround_strength", surroundStrength)
+            putFloat("crossfeed", crossfeed)
             putFloat("channel_delay", channelDelay)
             putString("presets", gson.toJson(presets.toList()))
             putString("current_preset", currentPresetName)
@@ -298,6 +335,7 @@ class MainActivity : ComponentActivity() {
     private fun loadState() {
         val sp = getSharedPreferences("eq_prefs", MODE_PRIVATE)
         val gson = Gson()
+        isEngineEnabled = sp.getBoolean("engine_enabled", true)
         val bandsJson = sp.getString("bands", null)
         if (bandsJson != null) {
             val type = object : TypeToken<List<BandConfig>>() {}.type
@@ -307,6 +345,7 @@ class MainActivity : ComponentActivity() {
         masterGain = sp.getFloat("master_gain", 0f)
         masterVolume = sp.getFloat("master_volume", 100f)
         surroundStrength = sp.getFloat("surround_strength", 0f)
+        crossfeed = sp.getFloat("crossfeed", 0f)
         channelDelay = sp.getFloat("channel_delay", 0f)
         currentPresetName = sp.getString("current_preset", "Custom") ?: "Custom"
         
@@ -334,7 +373,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun notifyService() {
-        if (isBound) equalizerService?.updateConfigs(bandConfigs, masterGain)
+        if (isBound) {
+            equalizerService?.updateConfigs(bandConfigs, masterGain)
+            equalizerService?.setEngineEnabled(isEngineEnabled)
+        }
     }
 
     override fun onDestroy() {
