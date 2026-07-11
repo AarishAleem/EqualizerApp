@@ -10,6 +10,8 @@ add_library(
     native-lib.cpp
     Biquad.cpp
     AudioEngine.cpp
+    DSPPipeline.cpp
+    FrequencyResponseAnalyzer.cpp
 )
 
 find_library(

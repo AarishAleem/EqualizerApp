@@ -20,24 +20,25 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.equalizerapp.MainActivity
+import com.example.equalizerapp.dsp.models.BandConfig
+import com.example.equalizerapp.dsp.models.Preset
 import com.example.equalizerapp.ui.components.*
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EqualizerScreen(
-    bandConfigs: SnapshotStateList<MainActivity.BandConfig>,
+    bandConfigs: SnapshotStateList<BandConfig>,
     graphData: FloatArray,
     realTimeFft: FloatArray,
     masterGain: Float,
-    presets: List<MainActivity.Preset>,
+    presets: List<Preset>,
     currentPresetName: String,
     onMasterGainChanged: (Float) -> Unit,
     onAddBand: () -> Unit,
     onRemoveBand: (Int) -> Unit,
     onConfigChanged: () -> Unit,
-    onPresetSelected: (MainActivity.Preset) -> Unit,
+    onPresetSelected: (Preset) -> Unit,
     onSavePreset: (String) -> Unit,
     onResetPreset: () -> Unit
 ) {
@@ -203,7 +204,7 @@ fun EqualizerScreen(
 @Composable
 fun BandCard(
     index: Int,
-    config: MainActivity.BandConfig,
+    config: BandConfig,
     onRemove: () -> Unit,
     onChanged: () -> Unit
 ) {

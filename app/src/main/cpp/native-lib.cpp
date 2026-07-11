@@ -1,17 +1,15 @@
 #include <jni.h>
-#include <string>
 #include <vector>
-#include <cmath>
 #include <android/log.h>
 #include "AudioEngine.h"
+#include "FrequencyResponseAnalyzer.h"
 
 #define TAG "EqualizerNative"
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 
 AudioEngine* gAudioEngine = nullptr;
 
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_com_example_equalizerapp_MainActivity_calculateFrequencyResponse(
+Java_com_example_equalizerapp_dsp_engine_DSPConfigurationManager_calculateFrequencyResponseNative(
         JNIEnv* env,
         jobject /* this */,
         jfloatArray frequencies,
@@ -24,32 +22,30 @@ Java_com_example_equalizerapp_MainActivity_calculateFrequencyResponse(
     jsize freqCount = env->GetArrayLength(frequencies);
     jsize bandCount = env->GetArrayLength(bandFreqs);
 
-    jfloat* freqs = env->GetFloatArrayElements(frequencies, nullptr);
-    jfloat* bFreqs = env->GetFloatArrayElements(bandFreqs, nullptr);
-    jfloat* bGains = env->GetFloatArrayElements(bandGains, nullptr);
-    jfloat* bQs = env->GetFloatArrayElements(bandQs, nullptr);
-    jint* bTypes = env->GetIntArrayElements(bandTypes, nullptr);
+    jfloat* freqsArr = env->GetFloatArrayElements(frequencies, nullptr);
+    jfloat* bFreqsArr = env->GetFloatArrayElements(bandFreqs, nullptr);
+    jfloat* bGainsArr = env->GetFloatArrayElements(bandGains, nullptr);
+    jfloat* bQsArr = env->GetFloatArrayElements(bandQs, nullptr);
+    jint* bTypesArr = env->GetIntArrayElements(bandTypes, nullptr);
 
-    std::vector<float> response(freqCount, masterGain);
-    const double fs = 48000.0;
+    std::vector<float> freqs(freqsArr, freqsArr + freqCount);
+    std::vector<float> bFreqs(bFreqsArr, bFreqsArr + bandCount);
+    std::vector<float> bGains(bGainsArr, bGainsArr + bandCount);
+    std::vector<float> bQs(bQsArr, bQsArr + bandCount);
+    std::vector<int> bTypes(bTypesArr, bTypesArr + bandCount);
 
-    Biquad temporaryBiquad;
-    for (int i = 0; i < freqCount; ++i) {
-        double f = (double)freqs[i];
-        for (int b = 0; b < bandCount; ++b) {
-            temporaryBiquad.configure((FilterType)bTypes[b], bFreqs[b], bGains[b], bQs[b], fs);
-            response[i] += (float)temporaryBiquad.getMagnitude(f, fs);
-        }
-    }
+    std::vector<float> response = FrequencyResponseAnalyzer::calculateResponse(
+        freqs, bFreqs, bGains, bQs, bTypes, masterGain
+    );
 
     jfloatArray result = env->NewFloatArray(freqCount);
     env->SetFloatArrayRegion(result, 0, freqCount, response.data());
 
-    env->ReleaseFloatArrayElements(frequencies, freqs, 0);
-    env->ReleaseFloatArrayElements(bandFreqs, bFreqs, 0);
-    env->ReleaseFloatArrayElements(bandGains, bGains, 0);
-    env->ReleaseFloatArrayElements(bandQs, bQs, 0);
-    env->ReleaseIntArrayElements(bandTypes, bTypes, 0);
+    env->ReleaseFloatArrayElements(frequencies, freqsArr, JNI_ABORT);
+    env->ReleaseFloatArrayElements(bandFreqs, bFreqsArr, JNI_ABORT);
+    env->ReleaseFloatArrayElements(bandGains, bGainsArr, JNI_ABORT);
+    env->ReleaseFloatArrayElements(bandQs, bQsArr, JNI_ABORT);
+    env->ReleaseIntArrayElements(bandTypes, bTypesArr, JNI_ABORT);
 
     return result;
 }
@@ -58,35 +54,41 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_example_equalizerapp_EqualizerService_createNativeEngine(JNIEnv* env, jobject /* this */, jint numBands, jdouble sampleRate) {
     if (gAudioEngine) delete gAudioEngine;
     gAudioEngine = new AudioEngine();
-    LOGD("Native Audio Engine with Oboe created");
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_equalizerapp_EqualizerService_configureNativeBand(
         JNIEnv* env, jobject /* this */, jint index, jint type, jdouble freq, jdouble gain, jdouble q) {
     if (gAudioEngine) {
-        gAudioEngine->setBand(index, (FilterType)type, freq, gain, q);
+        auto& pm = gAudioEngine->getParameterManager();
+        uint32_t base = 100 + index * 10;
+
+        pm.setParameter(static_cast<ParameterID>(base + 0), static_cast<float>(type));
+        pm.setParameter(static_cast<ParameterID>(base + 1), static_cast<float>(freq));
+        pm.setParameter(static_cast<ParameterID>(base + 2), static_cast<float>(gain));
+        pm.setParameter(static_cast<ParameterID>(base + 3), static_cast<float>(q));
     }
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_equalizerapp_EqualizerService_setNativeMasterGain(JNIEnv* env, jobject /* this */, jfloat gain) {
     if (gAudioEngine) {
-        gAudioEngine->setMasterGain(gain);
+        gAudioEngine->getParameterManager().setParameter(ParameterID::PreampGain, gain);
     }
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_equalizerapp_EqualizerService_setNativeSurround(JNIEnv* env, jobject /* this */, jfloat width, jfloat crossfeed) {
     if (gAudioEngine) {
-        gAudioEngine->setSurround(width, crossfeed);
+        gAudioEngine->getParameterManager().setParameter(ParameterID::StereoWidth, width);
+        gAudioEngine->getParameterManager().setParameter(ParameterID::Crossfeed, crossfeed);
     }
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_example_equalizerapp_EqualizerService_setNativeEnabled(JNIEnv* env, jobject /* this */, jboolean enabled) {
     if (gAudioEngine) {
-        gAudioEngine->setEnabled(enabled);
+        gAudioEngine->getParameterManager().setParameter(ParameterID::Bypass, enabled ? 1.0f : 0.0f);
     }
 }
 

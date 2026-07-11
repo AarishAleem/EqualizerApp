@@ -1,42 +1,55 @@
 #ifndef EQUALIZERAPP_DSPMODULE_H
 #define EQUALIZERAPP_DSPMODULE_H
 
-#include <vector>
+#include "ParameterID.h"
+#include "ParameterValue.h"
 #include <string>
+#include <vector>
 
-// Abstract base class for all DSP modules
+/**
+ * Richer lifecycle states for production-grade module management.
+ */
+enum class ModuleState {
+    Active,     // Processing and contributing to output
+    Bypassed,   // Passing input to output without modification
+    Suspended   // Muted, zero output (e.g., when no signal detected)
+};
+
+/**
+ * Abstract base class for all native DSP modules.
+ */
 class DSPModule {
 public:
     virtual ~DSPModule() = default;
 
-    // Process a single stereo frame (L and R)
-    virtual void process(float& left, float& right) = 0;
+    virtual void prepare(int sampleRate, int blockSize, int channels) = 0;
+    virtual void process(float* left, float* right, int numFrames) = 0;
+    virtual void reset() = 0;
 
-    virtual void setEnabled(bool enabled) { enabled_ = enabled; }
-    virtual bool isEnabled() const { return enabled_; }
+    /**
+     * Unified parameter entry point.
+     * Now strictly routes only owned parameters via the registry.
+     */
+    virtual void setParameter(ParameterID id, ParameterValue value) = 0;
+
+    /**
+     * Called during registry initialization to map parameters to destinations.
+     */
+    virtual std::vector<ParameterID> getOwnedParameters() const = 0;
+
     virtual std::string getName() const = 0;
 
+    virtual void setState(ModuleState state) { state_ = state; }
+    virtual ModuleState getState() const { return state_; }
+
+    // Legacy support for simple boolean toggle
+    virtual void setEnabled(bool enabled) {
+        state_ = enabled ? ModuleState::Active : ModuleState::Bypassed;
+    }
+    virtual bool isEnabled() const { return state_ == ModuleState::Active; }
+
 protected:
-    bool enabled_ = true;
-};
-
-// Simple Preamp Module (the first step in our chain)
-class PreampModule : public DSPModule {
-public:
-    void setGain(float gainDb) {
-        gainLinear_ = powf(10.0f, gainDb / 20.0f);
-    }
-
-    void process(float& left, float& right) override {
-        if (!enabled_) return;
-        left *= gainLinear_;
-        right *= gainLinear_;
-    }
-
-    std::string getName() const override { return "Preamp"; }
-
-private:
-    float gainLinear_ = 1.0f;
+    ModuleState state_ = ModuleState::Active;
 };
 
 #endif //EQUALIZERAPP_DSPMODULE_H

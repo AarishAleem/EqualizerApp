@@ -1,0 +1,11 @@
+Build Variant: debug
+Android Gradle Plugin: 8.7.3 (inferred)
+Gradle Version: 9.4.1
+Kotlin Version: 1.9.22 (from libs.versions.toml)
+NDK Version: 27.0.12077973
+CMake Version: 3.22.1
+Compiler Version: Clang (NDK default)
+C++ Standard: C++17 (inferred from codebase usage)
+Supported ABIs: arm64-v8a, armeabi-v7a, x86, x86_64
+Oboe Version: 1.10.0
+Build Status: Success (verified via previous gradle_build)

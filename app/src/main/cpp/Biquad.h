@@ -42,6 +42,7 @@ class MultiBandEqualizer {
 public:
     MultiBandEqualizer(int numBands, double sampleRate);
     void setBand(int index, FilterType type, double freq, double gainDb, double Q);
+    void setSampleRate(double sampleRate);
     float process(float sample);
     void process(const float* input, float* output, int numSamples, float masterGainDb);
 

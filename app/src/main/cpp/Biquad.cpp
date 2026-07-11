@@ -125,6 +125,10 @@ void MultiBandEqualizer::setBand(int index, FilterType type, double freq, double
     }
 }
 
+void MultiBandEqualizer::setSampleRate(double sampleRate) {
+    sampleRate_ = sampleRate;
+}
+
 float MultiBandEqualizer::process(float sample) {
     for (auto& band : bands_) {
         sample = band.process(sample);

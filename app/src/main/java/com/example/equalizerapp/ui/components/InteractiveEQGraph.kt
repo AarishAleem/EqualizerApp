@@ -11,13 +11,13 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
-import com.example.equalizerapp.MainActivity
+import com.example.equalizerapp.dsp.models.BandConfig
 import kotlin.math.*
 
 @Composable
 fun InteractiveEQGraph(
     responseCurve: FloatArray,
-    bandConfigs: List<MainActivity.BandConfig>,
+    bandConfigs: List<BandConfig>,
     onBandChange: (Int, Float, Float) -> Unit,
     modifier: Modifier = Modifier,
     accentColor: Color = Color(0xFFFF3B4E)

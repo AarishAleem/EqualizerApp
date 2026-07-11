@@ -1,0 +1,16 @@
+# PowerEQ Master: Static Engineering Review (v5 Final)
+
+## 1. Known Architectural Limitations
+- **Parameter Smoothing:** While implemented for gain/volume, complex filter coefficient interpolation (to prevent clicks on large frequency sweeps) is currently basic. A more advanced cross-fading implementation is recommended for the ParametricEQModule.
+- **Input Source:** The engine currently initializes with silence (Proof of Concept). Global system audio "tapping" via AudioPlaybackCapture is the intended next step.
+- **Interleaving:** The pipeline currently uses a static stack buffer for de-interleaving Left and Right channels. For production, this should be moved to a pre-allocated heap buffer inside the Engine class to prevent stack-depth issues.
+
+## 2. Compiler & Toolchain
+- **Build Status:** Success (All ABIs).
+- **Warnings:** Clang-Tidy "Uninitialized record type" in JNI layer (intentional for high-frequency value assignment).
+- **C++ Standard:** C++17.
+
+## 3. Real-Time Safety Audit
+- **Hot Path:** `AudioEngine::onAudioReady` verified to be lock-free and allocation-free.
+- **Ownership:** pipeline_ handles RAII for all modules. registry_ maps raw pointers for O(1) performance.
+- **State Management:** SPSC queue ensures single-producer (UI) single-consumer (Audio) thread safety.

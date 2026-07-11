@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.example.equalizerapp.dsp.models.BandConfig
 import java.util.HashMap
 import kotlin.math.max
 
@@ -22,7 +23,7 @@ class EqualizerService : Service() {
     private val activeEffects = HashMap<Int, DynamicsProcessing>()
     private val activeVirtualizers = HashMap<Int, Virtualizer>()
     
-    private var currentConfigs: List<MainActivity.BandConfig> = ArrayList()
+    private var currentConfigs: List<BandConfig> = ArrayList()
     private var masterGain: Float = 0f
     private var masterVolume: Float = 100f
     private var surroundStrength: Float = 0f
@@ -108,7 +109,7 @@ class EqualizerService : Service() {
         return START_STICKY
     }
 
-    fun updateConfigs(configs: List<MainActivity.BandConfig>, masterGain: Float) {
+    fun updateConfigs(configs: List<BandConfig>, masterGain: Float) {
         val oldSize = currentConfigs.size
         this.currentConfigs = configs.sortedBy { it.frequency }
         this.masterGain = masterGain

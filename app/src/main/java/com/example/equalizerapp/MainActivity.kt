@@ -18,6 +18,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.content.ContextCompat
+import com.example.equalizerapp.dsp.engine.DSPConfigurationManager
+import com.example.equalizerapp.dsp.models.BandConfig
+import com.example.equalizerapp.dsp.models.Preset
 import com.example.equalizerapp.ui.screens.EffectsScreen
 import com.example.equalizerapp.ui.screens.EqualizerScreen
 import com.example.equalizerapp.ui.screens.SurroundScreen
@@ -31,6 +34,8 @@ import kotlin.math.pow
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+
+    private val dspManager = DSPConfigurationManager.instance
 
     private var equalizerService: EqualizerService? = null
     private var isBound by mutableStateOf(false)
@@ -58,41 +63,13 @@ class MainActivity : ComponentActivity() {
 
     private var currentScreen by mutableStateOf<Screen>(Screen.Equalizer)
 
-    companion object {
-        init {
-            System.loadLibrary("equalizerapp")
-        }
-    }
-
-    private external fun calculateFrequencyResponse(
-        frequencies: FloatArray,
-        bandFreqs: FloatArray,
-        bandGains: FloatArray,
-        bandQs: FloatArray,
-        bandTypes: IntArray,
-        masterGain: Float
-    ): FloatArray
-
-    data class BandConfig(
-        var frequency: Float,
-        var gain: Float,
-        var q: Float,
-        var typeIndex: Int = 0 // 0: Peak, 1: LP, 2: HP, 3: BP, 4: LS, 5: HS
-    )
-
-    data class Preset(
-        val name: String,
-        val bands: List<BandConfig>,
-        val masterGain: Float
-    )
-
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as EqualizerService.LocalBinder
             equalizerService = binder.getService()
             isBound = true
-            equalizerService?.updateConfigs(bandConfigs, masterGain)
-            equalizerService?.updateEffects(masterVolume, surroundStrength, channelDelay)
+            notifyService()
+            equalizerService?.updateEffects(masterVolume, surroundStrength, channelDelay, crossfeed)
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             isBound = false
@@ -118,6 +95,8 @@ class MainActivity : ComponentActivity() {
         
         if (bandConfigs.isEmpty()) initDefaultBands()
 
+        dspManager.setMasterGain(masterGain)
+        dspManager.setEnabled(isEngineEnabled)
         updateGraphImmediate()
 
         val serviceIntent = Intent(this, EqualizerService::class.java)
@@ -258,6 +237,7 @@ class MainActivity : ComponentActivity() {
             // For custom presets, reset to a flat 5-band state
             bandConfigs.clear()
             initDefaultBands()
+            dspManager.setMasterGain(0f)
             masterGain = 0f
             saveAndNotifyImmediate()
         }
@@ -267,6 +247,7 @@ class MainActivity : ComponentActivity() {
         bandConfigs.clear()
         bandConfigs.addAll(preset.bands.map { it.copy() })
         masterGain = preset.masterGain
+        dspManager.setMasterGain(masterGain)
         currentPresetName = preset.name
         updateGraphImmediate()
         notifyService()
@@ -358,18 +339,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateGraphImmediate() {
-        val freqPoints = 120
-        val frequencies = FloatArray(freqPoints)
-        val minF = 20f
-        val maxF = 22000f
-        for (i in 0 until freqPoints) frequencies[i] = minF * (maxF / minF).toDouble().pow(i.toDouble() / (freqPoints - 1)).toFloat()
-        
-        val bFreqs = bandConfigs.map { it.frequency }.toFloatArray()
-        val bGains = bandConfigs.map { it.gain }.toFloatArray()
-        val bQs = bandConfigs.map { it.q }.toFloatArray()
-        val bTypes = bandConfigs.map { it.typeIndex }.toIntArray()
-
-        graphData = calculateFrequencyResponse(frequencies, bFreqs, bGains, bQs, bTypes, masterGain)
+        graphData = dspManager.getFrequencyResponse(bandConfigs)
     }
 
     private fun notifyService() {
