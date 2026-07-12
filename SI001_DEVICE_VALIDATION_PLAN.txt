@@ -1,0 +1,19 @@
+﻿SI001 DEVICE VALIDATION PLAN
+
+Target Devices:
+1. Moto Pad 60 Pro
+2. Motorola/Dolby device (secondary)
+3. OPPO K13 5G
+
+Safety Protocol:
+- Use SPEAKER ONLY.
+- Start at MINIMUM practical volume.
+- Neutral EQ first.
+- One change at a time.
+- NO HEADPHONES.
+- NO IEMs.
+- NO maximum-gain reproduction attempt.
+
+CRITICAL: Any sudden extreme output, persistent glitch, or unexpected loudness increase terminates the test immediately.
+
+Device validation status: NOT YET PERFORMED

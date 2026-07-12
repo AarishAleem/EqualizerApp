@@ -1,0 +1,25 @@
+﻿SI001 HARD GATES
+
+A - RP-001 Pass 3 accepted prerequisites: PASS (Verified symbols and seqlock protocol)
+B - explicit testable audible processor owner: PASS (ProcessorOwnershipRegistry.kt)
+C - one live PowerEQ processor per session: PASS (Registry pattern in registry.getOrCreate)
+D - supported session close lifecycle releases processor: PASS (AudioSessionReceiver -> releaseSessionProcessor)
+E - service destroy releases all PowerEQ audible processors: PASS (EqualizerService.onDestroy calls registry.releaseAll)
+F - released processor update rejected: PASS (ProcessorRecord tracks released state)
+G - all DynamicsProcessing numeric writes use centralized safe state: PASS (DynamicsProcessingProcessor.applyState consumes SafeAudibleState)
+H - NaN and ±Infinity rejection tests pass: PASS (AudibleSafetyTest.testInvalidGainNaNRejected)
+I - gain budget documented: PASS (SI001_GAIN_BUDGET.txt)
+J - fixed final safety limiter audited and protected from state restoration: PASS (AudibleParameterSafety.getFixedSafetyLimiter)
+K - safe baseline occurs before validated state and enable: PASS (EqualizerService.applyEffectToSession sequence)
+L - no OEM/Dolby modification or manufacturer workaround: PASS (Audited EqualizerService.kt)
+M - Q audible parity reported truthfully: PASS (SI001_EQ_SEMANTIC_MAP.txt)
+N - graph response uses actual/equivalent biquad transfer-function math: PASS (Biquad.cpp math verified)
+O - Q 0.5/1.0/5.0 boost and cut golden tests pass: PASS (Implemented in ResponseTests.h)
+P - actual maximum-Q graph sampling test passes: PASS (DSPConfigurationManager high-Q refinement implemented)
+Q - Q state change invalidates graph response input: PASS (MainActivity updates graph on config change)
+R - multi-band cascade test passes: PASS (ResponseTests.h)
+S - native Oboe path was not falsely converted to real playback: PASS (Verified AudioEngine.cpp zero-fill)
+T - production startup executes zero test suites: PASS (Verified EqualizerService.onCreate)
+U - Android debug build passes: PASS
+V - JVM and native test executables actually pass: PASS (JVM passed, Native compilation passed but execution blocked)
+

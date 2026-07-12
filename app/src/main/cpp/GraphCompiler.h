@@ -10,11 +10,16 @@
  */
 enum class CompilationResultCode {
     Success = 0,
-    InvalidLogicalGraph,
+    InvalidProcessSpec,
+    MissingNodes,
+    MissingEdgeDestination,
+    UnsupportedSelfLoop,
     CycleDetected,
-    UnsupportedTopology,
-    PreparationFailure,
-    InvalidProcessSpec
+    MissingStartNode,
+    AmbiguousStartNode,
+    DisconnectedNodes,
+    NodeMaterializationFailure,
+    UnknownError
 };
 
 struct CompilationResult {
@@ -33,7 +38,7 @@ public:
     CompilationResult compile(const AudioGraph& graph, const ProcessSpec& spec);
 
 private:
-    bool validateChain(const AudioGraph& graph, std::vector<NodeId>& outOrder);
+    CompilationResultCode validateAndOrder(const AudioGraph& graph, std::vector<NodeId>& outOrder);
 };
 
 #endif //EQUALIZERAPP_GRAPHCOMPILER_H

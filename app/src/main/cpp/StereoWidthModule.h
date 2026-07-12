@@ -6,8 +6,8 @@
 
 class StereoWidthModule : public DSPModule {
 public:
-    void prepare(int sampleRate, int blockSize, int channels) override {
-        smoother_.reset(width_, sampleRate, 20.0f);
+    void prepare(const ProcessSpec& spec) override {
+        smoother_.reset(width_, spec.sampleRate, 20.0f);
     }
 
     void setParameter(ParameterID id, ParameterValue value) override {
@@ -21,25 +21,35 @@ public:
         return { ParameterID::StereoWidth };
     }
 
-    void process(float* left, float* right, int numFrames) override {
+    void process(ProcessContext& context) override {
         if (state_ == ModuleState::Bypassed) return;
-        for (int i = 0; i < numFrames; ++i) {
-            float l = left[i];
-            float r = right[i];
+
+        for (uint32_t i = 0; i < context.numFrames; ++i) {
+            float l = context.left[i];
+            float r = context.right[i];
             float w = smoother_.getNextValue();
 
             float mid = (l + r) * 0.5f;
             float side = (l - r) * 0.5f;
             side *= w;
 
-            left[i] = mid + side;
-            right[i] = mid - side;
+            context.left[i] = mid + side;
+            context.right[i] = mid - side;
         }
     }
 
-    void reset() override {}
+    void reset() override {
+        smoother_.skip();
+    }
 
     std::string getName() const override { return "Stereo Width"; }
+
+    std::unique_ptr<DSPModule> clone() const override {
+        auto c = std::make_unique<StereoWidthModule>();
+        c->width_ = this->width_;
+        c->state_ = this->state_;
+        return c;
+    }
 
 private:
     float width_ = 1.0f;

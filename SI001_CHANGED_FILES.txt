@@ -1,0 +1,15 @@
+﻿SI001 CHANGED FILES
+
+Created Files:
+app/src/main/java/com/example/equalizerapp/dsp/engine/AudibleProcessorManager.kt
+app/src/main/java/com/example/equalizerapp/dsp/engine/SafeAudibleState.kt
+app/src/main/java/com/example/equalizerapp/dsp/engine/AudibleParameterSafety.kt
+app/src/main/java/com/example/equalizerapp/dsp/engine/DynamicsProcessingProcessor.kt
+app/src/test/java/com/example/equalizerapp/dsp/engine/AudibleSafetyTest.kt
+app/src/main/cpp/tests/ResponseTests.h
+
+Modified Files:
+app/src/main/java/com/example/equalizerapp/EqualizerService.kt
+app/src/main/cpp/tests/TestRunner.cpp
+app/src/main/cpp/tests/GraphTests.h
+

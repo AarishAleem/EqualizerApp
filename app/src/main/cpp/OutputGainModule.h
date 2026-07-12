@@ -7,8 +7,8 @@
 
 class OutputGainModule : public DSPModule {
 public:
-    void prepare(int sampleRate, int blockSize, int channels) override {
-        smoother_.reset(gainLinear_, sampleRate, 10.0f);
+    void prepare(const ProcessSpec& spec) override {
+        smoother_.reset(gainLinear_, spec.sampleRate, 10.0f);
     }
 
     void setParameter(ParameterID id, ParameterValue value) override {
@@ -23,18 +23,28 @@ public:
         return { ParameterID::OutputVolume };
     }
 
-    void process(float* left, float* right, int numFrames) override {
+    void process(ProcessContext& context) override {
         if (state_ == ModuleState::Bypassed) return;
-        for (int i = 0; i < numFrames; ++i) {
+
+        for (uint32_t i = 0; i < context.numFrames; ++i) {
             float g = smoother_.getNextValue();
-            left[i] *= g;
-            right[i] *= g;
+            context.left[i] *= g;
+            context.right[i] *= g;
         }
     }
 
-    void reset() override {}
+    void reset() override {
+        smoother_.skip();
+    }
 
     std::string getName() const override { return "Output Gain"; }
+
+    std::unique_ptr<DSPModule> clone() const override {
+        auto c = std::make_unique<OutputGainModule>();
+        c->gainLinear_ = this->gainLinear_;
+        c->state_ = this->state_;
+        return c;
+    }
 
 private:
     float gainLinear_ = 1.0f;

@@ -1,0 +1,9 @@
+﻿SI001 EQ SEMANTIC MAP
+
+| Parameter | Native DSP | Graph | DynamicsProcessing Audible Bridge |
+| Frequency | SUPPORTED  | SUPPORTED | SUPPORTED |
+| Gain      | SUPPORTED  | SUPPORTED | SUPPORTED |
+| Q         | SUPPORTED  | SUPPORTED | UNSUPPORTED (Likely mapped to Peaking Bandwidth but API lacks explicit Q setter) |
+
+Note: Q is passed to JNI and used by Native Engine + Graph Math, but DynamicsProcessing.EqBand current implementation in EqualizerService.kt only sets Frequency and Gain.
+

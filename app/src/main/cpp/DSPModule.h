@@ -3,6 +3,8 @@
 
 #include "ParameterID.h"
 #include "ParameterValue.h"
+#include "ProcessSpec.h"
+#include "ProcessContext.h"
 #include <string>
 #include <vector>
 
@@ -12,7 +14,7 @@
 enum class ModuleState {
     Active,     // Processing and contributing to output
     Bypassed,   // Passing input to output without modification
-    Suspended   // Muted, zero output (e.g., when no signal detected)
+    Suspended   // Muted, zero output
 };
 
 /**
@@ -22,18 +24,28 @@ class DSPModule {
 public:
     virtual ~DSPModule() = default;
 
-    virtual void prepare(int sampleRate, int blockSize, int channels) = 0;
-    virtual void process(float* left, float* right, int numFrames) = 0;
+    /**
+     * Preparation contract. Must be called off the real-time thread.
+     */
+    virtual void prepare(const ProcessSpec& spec) = 0;
+
+    /**
+     * Processing contract. Must be real-time safe.
+     */
+    virtual void process(ProcessContext& context) = 0;
+
+    /**
+     * Reset contract. Clears delay lines and internal history.
+     */
     virtual void reset() = 0;
 
     /**
-     * Unified parameter entry point.
-     * Now strictly routes only owned parameters via the registry.
+     * Parameter entry point.
      */
     virtual void setParameter(ParameterID id, ParameterValue value) = 0;
 
     /**
-     * Called during registry initialization to map parameters to destinations.
+     * Parameters owned by this specific instance.
      */
     virtual std::vector<ParameterID> getOwnedParameters() const = 0;
 
@@ -42,11 +54,11 @@ public:
     virtual void setState(ModuleState state) { state_ = state; }
     virtual ModuleState getState() const { return state_; }
 
-    // Legacy support for simple boolean toggle
-    virtual void setEnabled(bool enabled) {
-        state_ = enabled ? ModuleState::Active : ModuleState::Bypassed;
-    }
-    virtual bool isEnabled() const { return state_ == ModuleState::Active; }
+    virtual uint32_t getLatencySamples() const { return 0; }
+
+    // DEFECT 3 FIX: Clone method to allow materializing runtime instances
+    // from logical graph nodes without shared state risk.
+    virtual std::unique_ptr<DSPModule> clone() const = 0;
 
 protected:
     ModuleState state_ = ModuleState::Active;

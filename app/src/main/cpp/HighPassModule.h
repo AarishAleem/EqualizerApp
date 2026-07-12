@@ -6,8 +6,8 @@
 
 class HighPassModule : public DSPModule {
 public:
-    void prepare(int sampleRate, int blockSize, int channels) override {
-        sampleRate_ = sampleRate;
+    void prepare(const ProcessSpec& spec) override {
+        sampleRate_ = spec.sampleRate;
         update();
     }
 
@@ -22,17 +22,27 @@ public:
         return { ParameterID::HighPassFreq };
     }
 
-    void process(float* left, float* right, int numFrames) override {
+    void process(ProcessContext& context) override {
         if (state_ == ModuleState::Bypassed) return;
-        for (int i = 0; i < numFrames; ++i) {
-            left[i] = biquadL_.process(left[i]);
-            right[i] = biquadR_.process(right[i]);
+
+        for (uint32_t i = 0; i < context.numFrames; ++i) {
+            context.left[i] = biquadL_.process(context.left[i]);
+            context.right[i] = biquadR_.process(context.right[i]);
         }
     }
 
-    void reset() override {}
+    void reset() override {
+        // Reset biquad states if needed
+    }
 
     std::string getName() const override { return "High Pass Filter"; }
+
+    std::unique_ptr<DSPModule> clone() const override {
+        auto c = std::make_unique<HighPassModule>();
+        c->frequency_ = this->frequency_;
+        c->state_ = this->state_;
+        return c;
+    }
 
 private:
     void update() {
@@ -42,7 +52,7 @@ private:
 
     Biquad biquadL_, biquadR_;
     float frequency_ = 20.0f;
-    int sampleRate_ = 48000;
+    double sampleRate_ = 48000;
 };
 
 #endif //EQUALIZERAPP_HIGHPASSMODULE_H

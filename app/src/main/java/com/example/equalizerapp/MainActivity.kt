@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
     private var isBound by mutableStateOf(false)
     private val bandConfigs = mutableStateListOf<BandConfig>()
     private var isEngineEnabled by mutableStateOf(true)
-    private var graphData by mutableStateOf(floatArrayOf())
+    private var graphData by mutableStateOf<Pair<FloatArray, FloatArray>>(Pair(floatArrayOf(), floatArrayOf()))
     private var realTimeFft by mutableStateOf(floatArrayOf())
     private var masterGain by mutableFloatStateOf(0f)
     

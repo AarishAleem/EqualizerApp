@@ -1,36 +1,29 @@
-# Real-Time Safety Specification
+# PowerEQ Master - Real-Time Safety Contract
 
-## 1. The Audio Callback Contract
-The `AudioEngine::onAudioReady` callback (and all transitive calls) MUST follow strict real-time constraints to prevent audio glitches (underruns).
+## 1. Audio Thread Restrictions
+ транзитивно reachable from `AudioEngine::onAudioReady()` MUST NOT:
+- Allocate or free heap memory (`new`, `delete`, `malloc`, `free`).
+- Acquire blocking mutexes or locks.
+- Wait on condition variables or perform unbounded loops.
+- Perform JNI calls.
+- Perform File I/O or Logging.
+- Throw or catch exceptions.
 
-### Prohibited Operations:
-*   **Memory Management:** No `malloc`, `free`, `new`, `delete`.
-*   **Synchronization:** No `std::mutex`, `std::lock_guard`, `std::condition_variable`.
-*   **I/O:** No file system access, network access, or `__android_log_print`.
-*   **JNI:** No calls into Java/Kotlin from the callback thread.
-*   **Blocking:** No `sleep`, `yield`, or long-running non-deterministic loops.
-*   **Exceptions:** No throwing or catching exceptions.
+## 2. Plan Lifecycle and Quiescence
+The engine uses a **Single-Reader Sequence Protocol** to manage `ExecutionPlan` lifetimes:
+- **Audio Thread** announces block entry (`blocksStarted_`) and block exit (`blocksCompleted_`).
+- **Control Thread** tags retired plans with the current `blocksStarted_` value.
+- **Reclamation** occurs only when `blocksCompleted_ >= retirementBlockId`.
+- This ensures a plan is never deleted while the audio thread is within its use interval.
 
-## 2. Callback Call Graph
-```
-AudioEngine::onAudioReady
-├── ExecutionPlan::load (atomic)
-├── ParameterQueue::pop (lock-free)
-│   └── ModuleRegistry::dispatch (O(1) lookup)
-│       └── DSPModule::setParameter
-├── ProcessContext setup (stack only)
-├── GraphExecutor::execute
-│   └── DSPModule::process
-│       ├── PreampModule::process (arithmetic only)
-│       ├── HighPassModule::process (arithmetic only)
-│       ├── ParametricEQModule::process (arithmetic only)
-│       ├── StereoWidthModule::process (arithmetic only)
-│       ├── CrossfeedModule::process (arithmetic only)
-│       └── OutputGainModule::process (arithmetic only)
-└── Re-interleaving loop (arithmetic only)
-```
+## 3. Oboe Callback Quiescence
+The engine relies on the **Oboe 1.10.0** synchronous lifecycle contract:
+- `oboe::AudioStream::close()` is a blocking operation.
+- Per Oboe specifications, once `close()` returns:
+  - All data callbacks have completed.
+  - No future data callbacks will be initiated.
+- This allows safe destruction of the `AudioEngine` and its processing arenas immediately after `close()`.
 
-## 3. Verified Constraints
-*   **Allocation:** PASS. All memory (Arena, Modules, Queue) is pre-allocated during initialization or `installGraph`.
-*   **Locking:** PASS. Inter-thread communication is handled via a Lock-Free SPSC Ring Buffer.
-*   **Determinism:** PASS. The execution plan is pre-compiled and executed sequentially.
+## 4. Real-Time Performance Hazards
+- **Coefficient Calculation:** Current BiQuad parameter updates involve `sin`, `cos`, and `pow`. These are deterministic but computationally expensive. RP-002 will move these to the control side or use efficient interpolation.
+- **Parameter Queue:** The queue is structurally bounded to 1024 events. Draining this in a single callback is safe but should be monitored for worst-case timing.

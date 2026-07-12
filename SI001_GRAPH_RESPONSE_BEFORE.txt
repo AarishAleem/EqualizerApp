@@ -1,0 +1,12 @@
+﻿SI001 GRAPH RESPONSE BEFORE AUDIT
+
+File: app/src/main/java/com/example/equalizerapp/dsp/engine/DSPConfigurationManager.kt
+Native Bridge: calculateFrequencyResponseNative (Line 86)
+Sampling: 120 points (Line 63), Logarithmic scale (Line 69)
+Input Mapping: bandConfigs.map { ... } (Lines 74-77)
+
+File: app/src/main/java/com/example/equalizerapp/ui/components/InteractiveEQGraph.kt
+Drawing: Canvas with Path (Lines 83-118)
+Interactivity: detectDragGestures (Lines 29-50)
+Mapping: freqToX/xToFreq (Lines 149-160) using ln/exp for logarithmic scale.
+

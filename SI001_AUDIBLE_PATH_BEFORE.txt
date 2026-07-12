@@ -1,0 +1,15 @@
+﻿SI001 AUDIBLE PATH BEFORE AUDIT
+
+File: app/src/main/java/com/example/equalizerapp/EqualizerService.kt
+Registry: private val activeEffects = HashMap<Int, DynamicsProcessing>() (Line 23)
+Creation: val dp = DynamicsProcessing(0, sessionId, builder.build()) (Line 170)
+Enable: dp.enabled = isEnabled (Line 171)
+Config: applyConfigsToDynamicsProcessing(dp) (Line 172)
+Storage: activeEffects[sessionId] = dp (Line 173)
+Update (Input Gain): dp.setInputGainAllChannelsTo(masterGain) (Line 204)
+Update (EQ Band): val eqBand = DynamicsProcessing.EqBand(true, config.frequency, config.gain) (Line 207)
+Limiter: val limiter = DynamicsProcessing.Limiter(true, true, 0, 1f, 60f, 10f, -0.1f, volumeDb) (Line 211)
+Close: activeEffects.remove(sessionId)?.release() (Line 194)
+Destroy: activeEffects.values.forEach { it.release() } (Line 307)
+Destroy Native Engine: destroyNativeEngine(nativeEngineHandle) (Line 305)
+

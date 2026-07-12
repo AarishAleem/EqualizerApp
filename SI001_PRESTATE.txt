@@ -1,0 +1,13 @@
+﻿SI001 PRESTATE
+
+COMMAND: git rev-parse --show-toplevel
+C:/Users/Aarish/AndroidStudioProjects/EqualizerApp
+
+COMMAND: git branch --show-current
+main
+
+COMMAND: git rev-parse HEAD
+9019e14095fbcce1a852f549c3b2bc37651b6a6e
+
+COMMAND: git status --short
+A  .idea/planningMode.xml  M REALTIME_SAFETY.md  M app/src/main/cpp/AudioEngine.cpp  M app/src/main/cpp/AudioEngine.h  M app/src/main/cpp/AudioGraph.h  M app/src/main/cpp/CMakeLists.txt  M app/src/main/cpp/CrossfeedModule.h  M app/src/main/cpp/DSPModule.h AM app/src/main/cpp/ExecutionPlan.cpp  M app/src/main/cpp/ExecutionPlan.h  M app/src/main/cpp/GraphCompiler.cpp  M app/src/main/cpp/GraphCompiler.h  M app/src/main/cpp/GraphExecutor.h  M app/src/main/cpp/HighPassModule.h  M app/src/main/cpp/OutputGainModule.h  M app/src/main/cpp/ParametricEQModule.h  M app/src/main/cpp/PreampModule.h  M app/src/main/cpp/StereoWidthModule.h  M app/src/main/cpp/native-lib.cpp  M app/src/main/cpp/tests/GraphTests.h A  app/src/main/cpp/tests/ResponseTests.h AM app/src/main/cpp/tests/TestRunner.cpp  M app/src/main/java/com/example/equalizerapp/EqualizerService.kt AM app/src/main/java/com/example/equalizerapp/dsp/engine/AudibleParameterSafety.kt AM app/src/main/java/com/example/equalizerapp/dsp/engine/AudibleProcessorManager.kt AM app/src/main/java/com/example/equalizerapp/dsp/engine/DynamicsProcessingProcessor.kt A  app/src/main/java/com/example/equalizerapp/dsp/engine/SafeAudibleState.kt A  app/src/test/java/com/example/equalizerapp/dsp/engine/AudibleSafetyTest.kt ?? EqualizerApp_debug.apk ?? PowerEQ_SI001_Independent_Source_Review.zip ?? SI001_AUDIBLE_PATH_BEFORE.txt ?? SI001_GRAPH_RESPONSE_BEFORE.txt ?? app/hs_err_pid25936.log ?? app/hs_err_pid9524.log ?? app/hs_err_pid9980.log

@@ -14,55 +14,148 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.example.equalizerapp.dsp.engine.AudibleParameterSafety
+import com.example.equalizerapp.dsp.engine.AudibleProcessorAdapter
+import com.example.equalizerapp.dsp.engine.DynamicsProcessingProcessor
+import com.example.equalizerapp.dsp.engine.ProcessorOwnershipRegistry
+import com.example.equalizerapp.dsp.engine.SafeAudibleState
 import com.example.equalizerapp.dsp.models.BandConfig
 import java.util.HashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
 class EqualizerService : Service() {
     private val binder = LocalBinder()
-    private val activeEffects = HashMap<Int, DynamicsProcessing>()
-    private val activeVirtualizers = HashMap<Int, Virtualizer>()
     
+    // SI-001: Processor ownership and safety
+    private val processorRegistry = ProcessorOwnershipRegistry<AudibleProcessorAdapter>()
+    private val activeVirtualizers = HashMap<Int, Virtualizer>()
+    private var lastSafeState: SafeAudibleState? = null
+    private val acceptingUpdates = AtomicBoolean(true)
+
     private var currentConfigs: List<BandConfig> = ArrayList()
     private var masterGain: Float = 0f
     private var masterVolume: Float = 100f
     private var surroundStrength: Float = 0f
-    private var channelDelay: Float = 0f
+    private var isEnabled: Boolean = true
     
     private var visualizer: Visualizer? = null
     private var fftData: FloatArray = FloatArray(64)
-    private var isEnabled: Boolean = true
+
+    // Native Engine Handle
+    private var nativeEngineHandle: Long = 0
 
     // Native EQ Engine Bridge
-    private external fun createNativeEngine(numBands: Int, sampleRate: Double)
-    private external fun configureNativeBand(index: Int, type: Int, freq: Double, gain: Double, q: Double)
-    private external fun setNativeMasterGain(gain: Float)
-    private external fun setNativeSurround(width: Float, crossfeed: Float)
-    private external fun setNativeEnabled(enabled: Boolean)
-    private external fun startNativeStream()
-    private external fun stopNativeStream()
+    private external fun createNativeEngine(numBands: Int, sampleRate: Double): Long
+    private external fun configureNativeBand(handle: Long, index: Int, type: Int, freq: Double, gain: Double, q: Double)
+    private external fun setNativeMasterGain(handle: Long, gain: Float)
+    private external fun setNativeSurround(handle: Long, width: Float, crossfeed: Float)
+    private external fun setNativeEnabled(handle: Long, enabled: Boolean)
+    private external fun startNativeStream(handle: Long)
+    private external fun stopNativeStream(handle: Long)
+    private external fun destroyNativeEngine(handle: Long)
+    private external fun runNativeTests(): Int
     
-    // Legacy process call removed
-    // private external fun processNativeAudio(input: FloatArray, output: FloatArray, numSamples: Int, masterGain: Float)
-
     inner class LocalBinder : Binder() {
         fun getService(): EqualizerService = this@EqualizerService
     }
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "SERVICE_CREATE")
         createNotificationChannel()
         startForeground(1, getNotification())
         
-        // Initialize Native Engine for a standard 48kHz session
-        createNativeEngine(12, 48000.0)
-        startNativeStream()
+        // Initialize Native Engine
+        nativeEngineHandle = createNativeEngine(12, 48000.0)
+        
+        if (nativeEngineHandle != 0L) {
+            startNativeStream(nativeEngineHandle)
+        } else {
+            Log.e(TAG, "Failed to create native audio engine.")
+        }
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             applyEffectToSession(0)
         }
         setupVisualizer(0)
     }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        intent?.let {
+            val sessionId = it.getIntExtra("session_id", -1)
+            if (sessionId != -1) {
+                when (it.action) {
+                    "OPEN_SESSION" -> {
+                        Log.d("PowerEQ-AudioSafety", "SESSION_OPEN session=$sessionId")
+                        applyEffectToSession(sessionId)
+                        if (sessionId != 0) setupVisualizer(sessionId)
+                    }
+                    "CLOSE_SESSION" -> {
+                        Log.d("PowerEQ-AudioSafety", "SESSION_CLOSE session=$sessionId")
+                        removeEffectFromSession(sessionId)
+                    }
+                }
+            }
+        }
+        return START_STICKY
+    }
+
+    fun updateConfigs(configs: List<BandConfig>, masterGain: Float) {
+        if (!acceptingUpdates.get()) return
+
+        this.currentConfigs = configs.sortedBy { it.frequency }
+        this.masterGain = masterGain
+        
+        // Native update
+        if (nativeEngineHandle != 0L) {
+            setNativeMasterGain(nativeEngineHandle, masterGain)
+            for (i in currentConfigs.indices) {
+                val config = currentConfigs[i]
+                configureNativeBand(nativeEngineHandle, i, config.typeIndex, config.frequency.toDouble(), config.gain.toDouble(), config.q.toDouble())
+            }
+        }
+        
+        // Audible update with safety boundary
+        val newState = AudibleParameterSafety.validate(masterGain, isEnabled, currentConfigs, lastSafeState)
+        lastSafeState = newState
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            processorRegistry.getActiveRecords().forEach { record ->
+                record.processor.applyState(newState)
+            }
+        }
+    }
+
+    fun updateEffects(volume: Float, surround: Float, delay: Float, crossfeedValue: Float = 0f) {
+        if (!acceptingUpdates.get()) return
+
+        this.masterVolume = volume
+        this.surroundStrength = surround
+        
+        // Native update
+        if (nativeEngineHandle != 0L) {
+            setNativeSurround(nativeEngineHandle, surround, crossfeedValue)
+        }
+        
+        // Note: masterVolume mapping and Virtualizer safety will be handled in SI-001 Pass 2 if needed
+    }
+
+    fun setEngineEnabled(enabled: Boolean) {
+        if (!acceptingUpdates.get()) return
+
+        this.isEnabled = enabled
+        if (nativeEngineHandle != 0L) {
+            setNativeEnabled(nativeEngineHandle, enabled)
+        }
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            processorRegistry.getActiveRecords().forEach { it.processor.setEnabled(enabled) }
+        }
+        activeVirtualizers.values.forEach { it.enabled = enabled && surroundStrength > 0 }
+    }
+
+    fun getRealTimeFft(): FloatArray = fftData
 
     private fun setupVisualizer(sessionId: Int) {
         try {
@@ -91,100 +184,31 @@ class EqualizerService : Service() {
         }
     }
 
-    fun getRealTimeFft(): FloatArray = fftData
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        intent?.let {
-            val sessionId = it.getIntExtra("session_id", -1)
-            if (sessionId != -1) {
-                when (it.action) {
-                    "OPEN_SESSION" -> {
-                        applyEffectToSession(sessionId)
-                        if (sessionId != 0) setupVisualizer(sessionId)
-                    }
-                    "CLOSE_SESSION" -> removeEffectFromSession(sessionId)
-                }
-            }
-        }
-        return START_STICKY
-    }
-
-    fun updateConfigs(configs: List<BandConfig>, masterGain: Float) {
-        val oldSize = currentConfigs.size
-        this.currentConfigs = configs.sortedBy { it.frequency }
-        this.masterGain = masterGain
-        
-        Log.d(TAG, "Updating configs: bands=${currentConfigs.size}, masterGain=$masterGain")
-        
-        // Update Native Engine state
-        setNativeMasterGain(masterGain)
-        for (i in currentConfigs.indices) {
-            val config = currentConfigs[i]
-            configureNativeBand(i, config.typeIndex, config.frequency.toDouble(), config.gain.toDouble(), config.q.toDouble())
-        }
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            if (oldSize != currentConfigs.size) {
-                val sessions = ArrayList(activeEffects.keys)
-                for (sessionId in sessions) {
-                    removeEffectFromSession(sessionId)
-                    applyEffectToSession(sessionId)
-                }
-            } else {
-                for (dp in activeEffects.values) {
-                    applyConfigsToDynamicsProcessing(dp)
-                }
-            }
-        }
-    }
-
-    fun updateEffects(volume: Float, surround: Float, delay: Float, crossfeedValue: Float = 0f) {
-        this.masterVolume = volume
-        this.surroundStrength = surround
-        this.channelDelay = delay
-        
-        Log.d(TAG, "Updating effects: vol=$volume, surround=$surround, delay=$delay, crossfeed=$crossfeedValue")
-        
-        // Update Native Engine with new 3D parameters
-        setNativeSurround(surround, crossfeedValue)
-        
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            activeEffects.values.forEach { applyConfigsToDynamicsProcessing(it) }
-        }
-        
-        // Legacy Virtualizer removed to prevent interference with our custom C++ engine
-    }
-
-    fun setEngineEnabled(enabled: Boolean) {
-        this.isEnabled = enabled
-        setNativeEnabled(enabled)
-        
-        // Toggle system-wide effects
-        activeEffects.values.forEach { it.enabled = enabled }
-        activeVirtualizers.values.forEach { it.enabled = enabled && surroundStrength > 0 }
-        
-        Log.d(TAG, "Engine state updated: enabled=$enabled")
-    }
-
     private fun applyEffectToSession(sessionId: Int) {
-        // DynamicsProcessing - Use 2 channels (Stereo) for headsets
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && !activeEffects.containsKey(sessionId)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
-                val builder = DynamicsProcessing.Config.Builder(
-                    0, 
-                    2, // Channel count set to 2 for stereo sound support
-                    true, 0,
-                    false, 0,
-                    true, max(1, currentConfigs.size),
-                    true
-                )
-                val dp = DynamicsProcessing(0, sessionId, builder.build())
-                dp.enabled = isEnabled // Use current global state
-                applyConfigsToDynamicsProcessing(dp)
-                activeEffects[sessionId] = dp
-                Log.d(TAG, "Applied DynamicsProcessing (Stereo) to session: $sessionId, enabled=$isEnabled")
+                processorRegistry.getOrCreateSessionProcessor(sessionId) { genId ->
+                    val builder = DynamicsProcessing.Config.Builder(
+                        0, 2, true, 0, false, 0, true, max(1, currentConfigs.size), true
+                    )
+                    val dp = DynamicsProcessing(0, sessionId, builder.build())
+                    
+                    val adapter = DynamicsProcessingProcessor(sessionId, genId, dp)
+                    
+                    // 1. apply safe baseline
+                    val baseline = AudibleParameterSafety.validate(0f, false, emptyList())
+                    adapter.applyState(baseline)
+                    
+                    // 2. apply validated state
+                    lastSafeState?.let { adapter.applyState(it) }
+                    
+                    // 3. enable
+                    adapter.setEnabled(isEnabled)
+                    
+                    adapter
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "DP Error: ${e.message}")
+                Log.e(TAG, "Failed to create DynamicsProcessing for session $sessionId", e)
             }
         }
 
@@ -192,12 +216,11 @@ class EqualizerService : Service() {
         if (!activeVirtualizers.containsKey(sessionId)) {
             try {
                 val v = Virtualizer(0, sessionId)
-                v.enabled = isEnabled && surroundStrength > 0 // Use current global state
+                v.enabled = isEnabled && surroundStrength > 0
                 if (v.strengthSupported) {
                     v.setStrength(surroundStrength.toInt().toShort())
                 }
                 activeVirtualizers[sessionId] = v
-                Log.d(TAG, "Applied Virtualizer to session: $sessionId, enabled=${v.enabled}")
             } catch (e: Exception) {
                 Log.e(TAG, "Virtualizer Error: ${e.message}")
             }
@@ -205,66 +228,10 @@ class EqualizerService : Service() {
     }
 
     private fun removeEffectFromSession(sessionId: Int) {
-        activeEffects.remove(sessionId)?.release()
-        activeVirtualizers.remove(sessionId)?.release()
-    }
-
-    private fun applyConfigsToDynamicsProcessing(dp: DynamicsProcessing?) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || dp == null) return
-
-        try {
-            // 1. Map Master Volume (0-100) to a dB range (-60dB to 0dB)
-            // 0 volume = -60dB (near silence), 100 volume = 0dB (unity)
-            val volumeDb = if (masterVolume <= 0f) -100f else (masterVolume - 100f) * 0.6f
-            
-            // 2. Apply Input Gain (Master Gain from EQ screen)
-            // We apply the user's "Master Gain" here at the input
-            dp.setInputGainAllChannelsTo(masterGain)
-
-            // 3. Setup EQ bands
-            for (i in currentConfigs.indices) {
-                val config = currentConfigs[i]
-                
-                // Android's DynamicsProcessing EqBand is natively a Peaking filter.
-                // We simulate Notch and improve other types within system limits.
-                var effectiveGain = config.gain
-                var effectiveFreq = config.frequency
-                
-                when (config.typeIndex) {
-                    6 -> { // Notch
-                        effectiveGain = -60f // Deep cut to simulate notch
-                    }
-                    3 -> { // Low Pass (Simulation)
-                        // If it's a LP, we apply the cut as we move higher
-                        if (effectiveGain > 0) effectiveGain = 0f
-                    }
-                    4 -> { // High Pass (Simulation)
-                        if (effectiveGain > 0) effectiveGain = 0f
-                    }
-                }
-                
-                val eqBand = DynamicsProcessing.EqBand(true, effectiveFreq, effectiveGain)
-                dp.setPostEqBandAllChannelsTo(i, eqBand)
-            }
-
-            // 4. Configure Limiter with Post-Gain for Volume
-            // We use the Limiter's postGain for the "Main Volume" to ensure it's the last stage
-            val limiter = DynamicsProcessing.Limiter(
-                true, // inUse
-                true, // enabled
-                0,    // linkGroup
-                1f,   // attackTime (ms)
-                60f,  // releaseTime (ms)
-                10f,  // ratio
-                -0.1f, // threshold (dB) - keep it near 0 to prevent hard clipping
-                volumeDb // postGain (dB) - our Master Volume
-            )
-            dp.setLimiterAllChannelsTo(limiter)
-            
-            Log.d(TAG, "Applied DP: InputGain=$masterGain, VolumeDb=$volumeDb")
-        } catch (e: Exception) { 
-            Log.e(TAG, "Apply config error: ${e.message}")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            processorRegistry.releaseSessionProcessor(sessionId)
         }
+        activeVirtualizers.remove(sessionId)?.release()
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
@@ -272,9 +239,7 @@ class EqualizerService : Service() {
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val serviceChannel = NotificationChannel(
-                CHANNEL_ID,
-                "PowerEQ Master Service",
-                NotificationManager.IMPORTANCE_LOW
+                CHANNEL_ID, "PowerEQ Master Service", NotificationManager.IMPORTANCE_LOW
             )
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(serviceChannel)
@@ -284,8 +249,7 @@ class EqualizerService : Service() {
     private fun getNotification(): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, notificationIntent, 
-            PendingIntent.FLAG_IMMUTABLE
+            this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -298,13 +262,37 @@ class EqualizerService : Service() {
     }
 
     override fun onDestroy() {
-        stopNativeStream()
-        activeEffects.values.forEach { it.release() }
+        Log.d(TAG, "SERVICE_DESTROY")
+        
+        // 1. stop updates
+        acceptingUpdates.set(false)
+        
+        // 2. release audible processors
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            processorRegistry.releaseAll()
+        }
         activeVirtualizers.values.forEach { it.release() }
-        activeEffects.clear()
         activeVirtualizers.clear()
+        
+        // 3. release Visualizer
         visualizer?.release()
+        
+        // 4. stop native engine
+        if (nativeEngineHandle != 0L) {
+            stopNativeStream(nativeEngineHandle)
+            destroyNativeEngine(nativeEngineHandle)
+            nativeEngineHandle = 0L
+        }
+        
         super.onDestroy()
+    }
+
+    fun dumpAudioSafetyState() {
+        Log.i("PowerEQ-AudioSafety", "--- Safety Snapshot ---")
+        Log.i("PowerEQ-AudioSafety", "Accepting Updates: ${acceptingUpdates.get()}")
+        Log.i("PowerEQ-AudioSafety", "Native Handle Valid: ${nativeEngineHandle != 0L}")
+        Log.i("PowerEQ-AudioSafety", "Live Processor Count: ${processorRegistry.getActiveRecords().size}")
+        Log.i("PowerEQ-AudioSafety", "Invalid Param Rejections: ${AudibleParameterSafety.getRejectionCount()}")
     }
 
     companion object {

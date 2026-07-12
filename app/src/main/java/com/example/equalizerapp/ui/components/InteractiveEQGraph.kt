@@ -16,7 +16,8 @@ import kotlin.math.*
 
 @Composable
 fun InteractiveEQGraph(
-    responseCurve: FloatArray,
+    frequencies: FloatArray,
+    magnitudes: FloatArray,
     bandConfigs: List<BandConfig>,
     onBandChange: (Int, Float, Float) -> Unit,
     modifier: Modifier = Modifier,
@@ -40,7 +41,6 @@ fun InteractiveEQGraph(
                     val bx = freqToX(config.frequency, width)
                     val by = midY - (config.gain * scaleY)
                     val dist = sqrt((touchX - bx).pow(2) + (touchY - by).pow(2))
-                    // Increase hit area for easier dragging
                     if (dist < 48.dp.toPx() && dist < minDistance) {
                         minDistance = dist
                         closestIndex = index
@@ -78,11 +78,11 @@ fun InteractiveEQGraph(
             }
 
             // Curve with Glow Effect
-            if (responseCurve.isNotEmpty()) {
+            if (frequencies.isNotEmpty() && frequencies.size == magnitudes.size) {
                 val path = Path()
-                for (i in responseCurve.indices) {
-                    val x = (i.toFloat() / (responseCurve.size - 1)) * width
-                    val y = (midY - (responseCurve[i] * scaleY)).coerceIn(0f, height)
+                for (i in frequencies.indices) {
+                    val x = freqToX(frequencies[i], width)
+                    val y = (midY - (magnitudes[i] * scaleY)).coerceIn(0f, height)
                     if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
                 }
 
@@ -103,22 +103,6 @@ fun InteractiveEQGraph(
                     color = Color.Cyan,
                     style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
                 )
-                
-                // Gradient Fill Area
-                val fillPath = Path().apply {
-                    addPath(path)
-                    lineTo(width, height)
-                    lineTo(0f, height)
-                    close()
-                }
-                drawPath(
-                    path = fillPath,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(Color.Cyan.copy(alpha = 0.15f), Color.Transparent),
-                        startY = midY - (15 * scaleY),
-                        endY = height
-                    )
-                )
             }
 
             // Interactive Nodes (Knobs on graph)
@@ -126,7 +110,6 @@ fun InteractiveEQGraph(
                 val nx = freqToX(config.frequency, width)
                 val ny = midY - (config.gain * scaleY)
                 
-                // Halo Glow
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(accentColor.copy(alpha = 0.4f), Color.Transparent),
@@ -137,17 +120,8 @@ fun InteractiveEQGraph(
                     center = Offset(nx, ny)
                 )
                 
-                // Core
-                drawCircle(
-                    color = accentColor,
-                    radius = 5.dp.toPx(),
-                    center = Offset(nx, ny)
-                )
-                drawCircle(
-                    color = Color.White,
-                    radius = 2.dp.toPx(),
-                    center = Offset(nx, ny)
-                )
+                drawCircle(color = accentColor, radius = 5.dp.toPx(), center = Offset(nx, ny))
+                drawCircle(color = Color.White, radius = 2.dp.toPx(), center = Offset(nx, ny))
             }
         }
     }

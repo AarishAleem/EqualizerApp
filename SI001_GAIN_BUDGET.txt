@@ -1,0 +1,12 @@
+﻿SI001 GAIN BUDGET
+
+Positive Gain Stages (Audible Path):
+1. Preamp (Native): -15 to +15 dB
+2. DynamicsProcessing Input Gain: -15 to +15 dB (Matches UI Master Gain)
+3. EQ Bands (Peaking): -15 to +15 dB per band
+4. Limiter Post-Gain: 0 dB (Hard Safety Bound)
+
+Total Theoretical Max Positive Boost (Sum): 15 (Input) + 15 (EQ Band Max) = 30 dB
+Limiter Threshold: -0.1 dB (Conservative protect)
+Limiter Ratio: 10:1
+

@@ -24,6 +24,8 @@ public:
         for (const auto& op : operations) {
             if (op.type == GraphOpType::Process && op.module) {
                 op.module->process(context);
+            } else if (op.type == GraphOpType::Tap && op.tap) {
+                op.tap->consume(context);
             }
         }
     }

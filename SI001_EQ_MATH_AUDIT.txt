@@ -1,0 +1,20 @@
+﻿SI001 EQ MATH AUDIT
+
+Reference: Robert Bristow-Johnson Audio EQ Cookbook
+Filter Type: Peaking EQ
+A = 10^(gainDb/40)
+omega0 = 2*pi*f0/Fs
+alpha = sin(omega0)/(2*Q)
+
+Coefficients (Direct Form I/II):
+b0 = 1 + alpha*A
+b1 = -2*cos(omega0)
+b2 = 1 - alpha*A
+a0 = 1 + alpha/A
+a1 = -2*cos(omega0)
+a2 = 1 - alpha/A
+
+Normalization: All b and a coefficients are divided by a0.
+Magnitude Evaluation: Evaluated via H(z) transfer function on unit circle z=exp(jw).
+Cascade Reasoning: dB magnitudes are added (Equivalent to multiplying complex transfer functions).
+

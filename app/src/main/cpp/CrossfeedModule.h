@@ -6,8 +6,8 @@
 
 class CrossfeedModule : public DSPModule {
 public:
-    void prepare(int sampleRate, int blockSize, int channels) override {
-        smoother_.reset(crossfeed_, sampleRate, 20.0f);
+    void prepare(const ProcessSpec& spec) override {
+        smoother_.reset(crossfeed_, spec.sampleRate, 20.0f);
     }
 
     void setParameter(ParameterID id, ParameterValue value) override {
@@ -21,21 +21,31 @@ public:
         return { ParameterID::Crossfeed };
     }
 
-    void process(float* left, float* right, int numFrames) override {
+    void process(ProcessContext& context) override {
         if (state_ == ModuleState::Bypassed) return;
-        for (int i = 0; i < numFrames; ++i) {
-            float l = left[i];
-            float r = right[i];
+
+        for (uint32_t i = 0; i < context.numFrames; ++i) {
+            float l = context.left[i];
+            float r = context.right[i];
             float c = smoother_.getNextValue();
 
-            left[i] = l + (r * c);
-            right[i] = r + (l * c);
+            context.left[i] = l + (r * c);
+            context.right[i] = r + (l * c);
         }
     }
 
-    void reset() override {}
+    void reset() override {
+        smoother_.skip();
+    }
 
     std::string getName() const override { return "Crossfeed"; }
+
+    std::unique_ptr<DSPModule> clone() const override {
+        auto c = std::make_unique<CrossfeedModule>();
+        c->crossfeed_ = this->crossfeed_;
+        c->state_ = this->state_;
+        return c;
+    }
 
 private:
     float crossfeed_ = 0.0f;

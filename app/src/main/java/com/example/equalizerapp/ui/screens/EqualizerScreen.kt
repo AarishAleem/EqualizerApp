@@ -29,7 +29,7 @@ import java.util.Locale
 @Composable
 fun EqualizerScreen(
     bandConfigs: SnapshotStateList<BandConfig>,
-    graphData: FloatArray,
+    graphData: Pair<FloatArray, FloatArray>,
     realTimeFft: FloatArray,
     masterGain: Float,
     presets: List<Preset>,
@@ -52,7 +52,8 @@ fun EqualizerScreen(
     ) {
         // Interactive Graph
         InteractiveEQGraph(
-            responseCurve = graphData,
+            frequencies = graphData.first,
+            magnitudes = graphData.second,
             bandConfigs = bandConfigs,
             onBandChange = { index, freq, gain ->
                 bandConfigs[index].frequency = freq

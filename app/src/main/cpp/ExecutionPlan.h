@@ -3,6 +3,8 @@
 
 #include "ProcessSpec.h"
 #include "DSPModule.h"
+#include "ModuleRegistry.h"
+#include "AudioTap.h"
 #include <vector>
 #include <memory>
 
@@ -17,7 +19,7 @@ enum class GraphOpType {
 struct GraphOperation {
     GraphOpType type;
     DSPModule* module = nullptr;
-    // Future: buffer indices, tap sinks, etc.
+    AudioTapSink* tap = nullptr;
 };
 
 /**
@@ -35,10 +37,13 @@ public:
     }
 
     void addModule(std::unique_ptr<DSPModule> module) {
+        registry_.registerModule(module.get());
         modules_.push_back(std::move(module));
     }
 
     const std::vector<GraphOperation>& getOperations() const { return operations_; }
+
+    ModuleRegistry& getRegistry() { return registry_; }
 
     void reset() {
         for (auto& module : modules_) {
@@ -49,6 +54,7 @@ public:
 private:
     ProcessSpec spec_;
     std::vector<std::unique_ptr<DSPModule>> modules_; // Owns the instances for this plan
+    ModuleRegistry registry_; // routes parameters for this plan's modules
     std::vector<GraphOperation> operations_;
 };
 

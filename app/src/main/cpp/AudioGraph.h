@@ -3,8 +3,20 @@
 
 #include "NodeId.h"
 #include "DSPModule.h"
+#include "AudioTap.h"
 #include <vector>
 #include <memory>
+#include <set>
+
+/**
+ * Result codes for graph mutation operations.
+ */
+enum class GraphMutationResult {
+    Success = 0,
+    InvalidNodeId,
+    DuplicateNodeId,
+    MissingEdgeSource
+};
 
 /**
  * Logical representation of the processing topology.
@@ -12,32 +24,44 @@
  */
 struct NodeDescriptor {
     NodeId id;
-    std::unique_ptr<DSPModule> module;
+    std::unique_ptr<DSPModule> moduleTemplate;
+    AudioTapSink* tap = nullptr;
     NodeId next = ReservedNodes::Invalid;
+
+    NodeDescriptor(NodeId id, std::unique_ptr<DSPModule> mod)
+        : id(id), moduleTemplate(std::move(mod)) {}
 };
 
 class AudioGraph {
 public:
     AudioGraph() = default;
 
-    // Non-copyable
     AudioGraph(const AudioGraph&) = delete;
     AudioGraph& operator=(const AudioGraph&) = delete;
 
-    void addNode(NodeId id, std::unique_ptr<DSPModule> module) {
-        nodes_.push_back({id, std::move(module), ReservedNodes::Invalid});
+    GraphMutationResult addNode(NodeId id, std::unique_ptr<DSPModule> module) {
+        if (id == ReservedNodes::Invalid) return GraphMutationResult::InvalidNodeId;
+
+        for (const auto& n : nodes_) {
+            if (n.id == id) return GraphMutationResult::DuplicateNodeId;
+        }
+
+        nodes_.emplace_back(id, std::move(module));
+        return GraphMutationResult::Success;
     }
 
-    void setLink(NodeId from, NodeId to) {
+    GraphMutationResult setLink(NodeId from, NodeId to) {
         for (auto& node : nodes_) {
             if (node.id == from) {
                 node.next = to;
-                return;
+                return GraphMutationResult::Success;
             }
         }
+        return GraphMutationResult::MissingEdgeSource;
     }
 
     const std::vector<NodeDescriptor>& getNodes() const { return nodes_; }
+    std::vector<NodeDescriptor>& getNodesMutable() { return nodes_; }
 
     void clear() {
         nodes_.clear();
